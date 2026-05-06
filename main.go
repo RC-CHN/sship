@@ -12,6 +12,17 @@ import (
 )
 
 func main() {
+	if len(os.Args) >= 2 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
+		fmt.Println("usage: sship [user@]host")
+		fmt.Println()
+		fmt.Println("  Copy your SSH public key to a remote host.")
+		fmt.Println("  Uses the system ssh client with all your existing config.")
+		fmt.Println()
+		fmt.Println("Options:")
+		fmt.Println("  -h, --help    Show this help message")
+		os.Exit(0)
+	}
+
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: sship [user@]host")
 		fmt.Fprintln(os.Stderr, "  Copy your SSH public key to a remote host.")
@@ -33,9 +44,10 @@ func main() {
 	}
 	key = bytes.TrimSpace(key)
 
-	// Build the remote script: mkdir, chmod, append key
-	remote := `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '%s' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'sship: key installed ✓'`
-	remote = fmt.Sprintf(remote, string(key))
+	// Build the remote script: mkdir, chmod, append key.
+	// Escape single quotes to prevent shell injection via the key string.
+	escaped := strings.ReplaceAll(string(key), "'", "'\\''")
+	remote := "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '" + escaped + "' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo 'sship: key installed ✓'"
 
 	cmd := exec.Command("ssh", target, remote)
 	cmd.Stdin = os.Stdin
@@ -67,8 +79,8 @@ func pickPubKey() (string, error) {
 
 	if len(found) == 0 {
 		fmt.Print("No SSH key found. Generate one? [id_ed25519 / id_rsa / skip]: ")
-		var choice string
-		fmt.Scanln(&choice)
+		r := bufio.NewReader(os.Stdin)
+		choice, _ := r.ReadString('\n')
 		choice = strings.TrimSpace(strings.ToLower(choice))
 		if slices.Contains([]string{"skip", "n", "no", ""}, choice) {
 			return "", fmt.Errorf("no key to ship")
